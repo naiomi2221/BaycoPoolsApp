@@ -4,8 +4,9 @@ from geopy.geocoders import Nominatim
 from email.message import EmailMessage
 from geopy.distance import geodesic
 import streamlit as st
+from datetime import datetime
 
-
+TODAY = datetime.now().strftime("%A")
 geolocator = Nominatim(
     user_agent="bayco_pools_app",
     timeout=10
@@ -38,7 +39,8 @@ def init_db():
                      lat
                      REAL,
                      lon
-                     REAL
+                     REAL,
+                     service_day TEXT
                  )''')
     conn.commit()
     conn.close()
@@ -50,7 +52,7 @@ def load_customers():
     c.execute("SELECT * FROM customers")
     rows = c.fetchall()
     conn.close()
-    return [{"id": r[0], "name": r[1], "address": r[2], "email": r[3], "coords": (r[4], r[5])} for r in rows]
+    return [{"id": r[0], "name": r[1], "address": r[2], "email": r[3], "coords": (r[4], r[5]), "service_day": r[6]} for r in rows]
 
 
 init_db()
@@ -99,7 +101,10 @@ with tab2:
         name = st.text_input("Customer Name")
         addr = st.text_input("Full Address")
         mail = st.text_input("Email")
-
+        service_day = st.selectbox(
+            "Service Day",
+            ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        )
         submitted = st.form_submit_button("Save to Database")
 
         if submitted:
@@ -110,8 +115,8 @@ with tab2:
                 if loc:
                     conn = sqlite3.connect('bayco.db')
                     conn.execute(
-                        "INSERT INTO customers (name, address, email, lat, lon) VALUES (?,?,?,?,?)",
-                        (name, addr, mail, loc.latitude, loc.longitude)
+                        "INSERT INTO customers (name, address, email, lat, lon, service_day) VALUES (?,?,?,?,?,?)",
+                        (name, addr, mail, loc.latitude, loc.longitude, service_day)
                     )
                     conn.commit()
                     conn.close()
@@ -120,24 +125,45 @@ with tab2:
                 else:
                     st.error("Address not found.")
 
+from datetime import datetime
+
 with tab1:
-    customers = load_customers()
+    TODAY = datetime.now().strftime("%A")
+
+    st.subheader(f"🧹 Route for {TODAY}")
+
+    all_customers = load_customers()
+
+    customers = [
+        c for c in all_customers
+        if c["service_day"] == TODAY
+    ]
+
     if not customers:
-        st.info("Add customers in the Manage Clients tab to begin.")
+        st.info(f"No customers scheduled for {TODAY}.")
     else:
         for c in customers:
-            c['dist'] = geodesic(OFFICE_LOCATION, c['coords']).miles
+            c["dist"] = geodesic(OFFICE_LOCATION, c["coords"]).miles
 
-        # Sort by distance (furthest first for routing)
-        route = sorted(customers, key=lambda x: x['dist'], reverse=True)
+        route = sorted(customers, key=lambda x: x["dist"], reverse=True)
 
         for i, cust in enumerate(route):
             with st.expander(f"📍 {cust['name']} ({round(cust['dist'], 1)} mi)"):
                 st.write(f"**Address:** {cust['address']}")
                 st.write(f"**Email:** {cust['email']}")
+
                 notes = st.text_area("Notes", key=f"notes_{i}")
-                photo = st.file_uploader("Upload Pool Photo", type=['jpg', 'png'], key=f"img_{i}")
+                photo = st.file_uploader(
+                    "Upload Pool Photo",
+                    type=["jpg", "png"],
+                    key=f"img_{i}"
+                )
 
                 if st.button("Finish & Email", key=f"btn_{i}"):
-                    if send_report(cust['email'], cust['name'], notes, photo):
+                    if send_report(
+                        cust["email"],
+                        cust["name"],
+                        notes,
+                        photo
+                    ):
                         st.success(f"Sent to {cust['name']}!")

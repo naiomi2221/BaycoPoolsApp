@@ -88,7 +88,7 @@ def send_report(to_email, name, notes, photo_file):
     # 2. Handle the photo attachment
 
 # 4. APP INTERFACE
-st.set_page_config(page_title="Bayco Pools Pro", page_icon="🌊")
+st.set_page_config(page_title="Bayco Pools", page_icon="assets/favicon.png")
 st.title("🌊 Bayco Pools Manager")
 
 tab1, tab2 = st.tabs(["Today's Route", "Manage Clients"])

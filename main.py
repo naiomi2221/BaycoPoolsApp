@@ -5,6 +5,17 @@ from email.message import EmailMessage
 from geopy.distance import geodesic
 import streamlit as st
 from datetime import datetime
+import time
+
+from geopy.exc import GeocoderUnavailable, GeocoderTimedOut
+
+def safe_geocode(address, retries=3):
+    for i in range(retries):
+        try:
+            return geolocator.geocode(address)
+        except (GeocoderUnavailable, GeocoderTimedOut):
+            time.sleep(2)
+    return None
 
 # -------------------------
 # Constants

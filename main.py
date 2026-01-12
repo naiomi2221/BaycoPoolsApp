@@ -128,17 +128,19 @@ def show_login():
         """
         <style>
         .login-container {
-            background-image: url('https://i.ibb.co/9vZ3xVJ/island-oasis.jpg');
+            background: rgba(0,0,0,0.5) url('https://i.ibb.co/9vZ3xVJ/island-oasis.jpg');
             background-size: cover;
             background-position: center;
             padding: 4rem;
             border-radius: 1rem;
-            opacity: 0.85;
             color: white;
             max-width: 400px;
-            margin: auto;
+            margin: 10vh auto;
+            box-shadow: 0 8px 32px 0 rgba(0,0,0,0.37);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
         }
-        .login-container input {
+        .login-container input, .login-container button {
             margin-bottom: 1rem;
         }
         </style>
@@ -165,6 +167,7 @@ def show_login():
             st.error(f"Login error: {e}")
 
     st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 # -------------------------

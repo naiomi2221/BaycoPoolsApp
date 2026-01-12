@@ -131,7 +131,7 @@ with tab2:
                     st.success(f"Added {name}!")
                     # Switch to Today's Route tab automatically
                     st.session_state["active_tab"] = "tab1"
-                    st.experimental_rerun()
+
                 else:
                     st.error("Address not found.")
 

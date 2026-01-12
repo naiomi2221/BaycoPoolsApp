@@ -9,6 +9,7 @@ from datetime import datetime
 # -------------------------
 # Constants
 # -------------------------
+show_inactive = st.checkbox("Show inactive customers", False)
 TODAY = datetime.now().strftime("%A")
 geolocator = Nominatim(user_agent="bayco_pools_app", timeout=10)
 ST_EMAIL = st.secrets["EMAIL_USER"]
@@ -34,7 +35,8 @@ def init_db():
             email TEXT,
             lat REAL,
             lon REAL,
-            service_day TEXT
+            service_day TEXT,
+            active INTEGER DEFAULT 1
         )
     ''')
     conn.commit()
@@ -45,7 +47,7 @@ def load_customers():
     conn = sqlite3.connect("bayco.db")
     c = conn.cursor()
     c.execute("""
-        SELECT id, name, address, email, lat, lon, COALESCE(service_day, '') as service_day
+        SELECT id, name, address, email, lat, lon, COALESCE(service_day, '') as service_day, active
         FROM customers
     """)
     rows = c.fetchall()
@@ -57,7 +59,8 @@ def load_customers():
             "address": r[2],
             "email": r[3],
             "coords": (r[4], r[5]),
-            "service_day": r[6]
+            "service_day": r[6],
+            "active": bool(r[7])
         }
         for r in rows
     ]
@@ -108,6 +111,23 @@ tab1, tab2 = st.tabs(["Today's Route", "Manage Clients"])
 # -------------------------
 with tab2:
     st.subheader("Add New Client")
+    customers = load_customers()
+    for cust in customers:
+        with st.expander(cust["name"]):
+            is_active = st.toggle(
+                "Active",
+                value=cust["active"],
+                key=f"active_{cust['id']}"
+            )
+            if is_active != cust["active"]:
+                conn = sqlite3.connect("bayco.db")
+                conn.execute(
+                    "UPDATE customers SET active=? WHERE id=?",
+                    (1 if is_active else 0, cust["id"])
+                )
+                conn.commit()
+                conn.close()
+                st.success("Status Updated.")
     with st.form("add_client", clear_on_submit=True):
         name = st.text_input("Customer Name")
         addr = st.text_input("Full Address")

@@ -5,21 +5,26 @@ from datetime import datetime
 import streamlit as st
 from geopy.distance import geodesic
 import openrouteservice
-from openrouteservice import convert
-import time
 
 # -------------------------
 # CONFIG & CONSTANTS
 # -------------------------
-st.set_page_config(page_title="🌊 Bayco Pools", page_icon="🏝️", layout="wide")
 TODAY = datetime.now().strftime("%A")
-
-ST_EMAIL = st.secrets["EMAIL_USER"]
-ST_PASS = st.secrets["EMAIL_PASS"]
+ORS_API_KEY = st.secrets.get("ORS_API_KEY", "")
 OFFICE_LOCATION = tuple(map(float, st.secrets.get("OFFICE_LOCATION", "30.2127,-85.8350").split(",")))
+
 SMTP_SERVER = "mail.spacemail.com"
 SMTP_PORT = 465
-ORS_API_KEY = st.secrets.get("ORS_API_KEY", "")
+ST_EMAIL = st.secrets["EMAIL_USER"]
+ST_PASS = st.secrets["EMAIL_PASS"]
+
+# -------------------------
+# SESSION STATE SETUP
+# -------------------------
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+    st.session_state["user_role"] = None
+    st.session_state["username"] = None
 
 # -------------------------
 # DATABASE
@@ -27,7 +32,7 @@ ORS_API_KEY = st.secrets.get("ORS_API_KEY", "")
 def init_db():
     conn = sqlite3.connect("bayco.db")
     c = conn.cursor()
-    c.execute("""
+    c.execute('''
         CREATE TABLE IF NOT EXISTS customers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
@@ -39,26 +44,30 @@ def init_db():
             active INTEGER DEFAULT 1,
             cleaning_started INTEGER DEFAULT 0
         )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS techs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            role TEXT
-        )
-    """)
+    ''')
     conn.commit()
     conn.close()
 
 def load_customers():
     conn = sqlite3.connect("bayco.db")
     c = conn.cursor()
-    c.execute("SELECT id, name, address, email, lat, lon, COALESCE(service_day,''), active, cleaning_started FROM customers")
+    c.execute("""
+        SELECT id, name, address, email, lat, lon, COALESCE(service_day,''), active, cleaning_started
+        FROM customers
+    """)
     rows = c.fetchall()
     conn.close()
     return [
-        {"id": r[0], "name": r[1], "address": r[2], "email": r[3], "coords": (r[4], r[5]),
-         "service_day": r[6], "active": bool(r[7]), "cleaning_started": bool(r[8])} for r in rows
+        {
+            "id": r[0],
+            "name": r[1],
+            "address": r[2],
+            "email": r[3],
+            "coords": (r[4], r[5]),
+            "service_day": r[6],
+            "active": bool(r[7]),
+            "cleaning_started": bool(r[8])
+        } for r in rows
     ]
 
 init_db()
@@ -89,77 +98,120 @@ def send_report(to_email, name, notes, photo_file):
         return False
 
 # -------------------------
-# LOGIN SYSTEM
+# LOGIN SCREEN
 # -------------------------
-def login_screen():
-    st.markdown("""
-        <div style="background: linear-gradient(to right, #56CCF2, #2F80ED); 
-                    padding: 2rem; border-radius: 1rem; text-align:center; color:white;">
-            <h1>🌴 Bayco Pools Manager Login</h1>
-            <p>Welcome! Please sign in to start your pool route</p>
-        </div>
-        """, unsafe_allow_html=True)
+if not st.session_state["logged_in"]:
+    st.image("assets/island_oasis.jpg", use_column_width=True)
+    st.markdown("<h1 style='text-align:center'>🌴 Welcome to Bayco Pools 🌊</h1>", unsafe_allow_html=True)
+    
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
-    login_btn = st.button("Login 🏝️")
-
-    if login_btn:
+    
+    if st.button("Login"):
         admins = st.secrets.get("admins", {})
         techs = st.secrets.get("techs", {})
-
+        
         if username in admins and password == admins[username]:
-            st.session_state["user"] = {"username": username, "role": "admin"}
-            st.success("Logged in as Admin 🌊")
+            st.session_state["logged_in"] = True
+            st.session_state["user_role"] = "admin"
+            st.session_state["username"] = username
+            st.experimental_rerun()
         elif username in techs and password == techs[username]:
-            st.session_state["user"] = {"username": username, "role": "tech"}
-            st.success("Logged in as Tech 🏊")
+            st.session_state["logged_in"] = True
+            st.session_state["user_role"] = "tech"
+            st.session_state["username"] = username
+            st.experimental_rerun()
         else:
-            st.error("❌ Invalid username or password")
+            st.error("Invalid username or password")
 
 # -------------------------
-# MAIN APP
+# DASHBOARD AFTER LOGIN
 # -------------------------
-if "user" not in st.session_state:
-    st.session_state["user"] = None
+if st.session_state["logged_in"]:
+    st.sidebar.markdown(f"Logged in as: **{st.session_state['username']}** ({st.session_state['user_role']})")
+    
+    # Tabs for admin/tech
+    tabs = ["Today's Route"]
+    if st.session_state["user_role"] == "admin":
+        tabs.append("Manage Clients")
+    
+    tab1, tab2 = st.tabs(tabs)
 
-if st.session_state["user"] is None:
-    login_screen()
-    st.stop()
-
-user_role = st.session_state["user"]["role"]
-
-st.sidebar.markdown(f"**Logged in as:** {st.session_state['user']['username']} ({user_role})")
-
-tab1, tab2 = st.tabs(["Today's Route 🗺️", "Manage Clients 🧾"])
-
-# -------------------------
-# MANAGE CLIENTS / ADMIN
-# -------------------------
-if user_role == "admin":
-    with tab2:
-        st.subheader("Add New Customer")
+    # -------------------------
+    # TECH TAB - Today's Route
+    # -------------------------
+    with tab1:
+        st.subheader(f"🧹 Route for {TODAY}")
         all_customers = load_customers()
-        for cust in all_customers:
-            with st.expander(cust["name"]):
-                is_active = st.checkbox("Active", value=cust["active"], key=f"active_{cust['id']}")
-                if is_active != cust["active"]:
-                    conn = sqlite3.connect("bayco.db")
-                    conn.execute("UPDATE customers SET active=? WHERE id=?", (1 if is_active else 0, cust["id"]))
-                    conn.commit()
-                    conn.close()
-                    st.success(f"{cust['name']} status updated.")
+        route_customers = [c for c in all_customers if c["service_day"] == TODAY and c["active"]]
+        
+        if not route_customers:
+            st.info(f"No customers scheduled for {TODAY}.")
+        else:
+            # Compute distance from office
+            for c in route_customers:
+                c["dist"] = geodesic(OFFICE_LOCATION, c["coords"]).miles
+            # Sort by furthest distance first
+            route = sorted(route_customers, key=lambda x: x["dist"], reverse=True)
+            
+            ors_client = openrouteservice.Client(key=ORS_API_KEY)
+            
+            for i, cust in enumerate(route):
+                with st.expander(f"📍 {cust['name']} ({round(cust['dist'],1)} mi)"):
+                    st.write(f"**Address:** {cust['address']}")
+                    st.write(f"**Email:** {cust['email']}")
+                    notes = st.text_area("Notes", key=f"notes_{i}")
+                    photo = st.file_uploader("Upload Pool Photo", type=["jpg","png"], key=f"img_{i}")
+                    
+                    if st.button("Start Cleaning", key=f"start_{i}"):
+                        conn = sqlite3.connect("bayco.db")
+                        conn.execute("UPDATE customers SET cleaning_started=1 WHERE id=?", (cust["id"],))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"Started cleaning {cust['name']}!")
+                    
+                    # Show directions
+                    try:
+                        coords = [OFFICE_LOCATION, cust["coords"]]
+                        routes = ors_client.directions(coords)
+                        steps = routes['routes'][0]['segments'][0]['steps']
+                        st.markdown("**Directions:**")
+                        for step in steps:
+                            st.write(f"{step['instruction']} ({step['distance']:.0f} m)")
+                    except Exception as e:
+                        st.error(f"Directions unavailable: {e}")
+                    
+                    if st.button("Finish & Email", key=f"finish_{i}"):
+                        if send_report(cust["email"], cust["name"], notes, photo):
+                            st.success(f"Sent to {cust['name']}!")
 
-        with st.form("add_client", clear_on_submit=True):
-            name = st.text_input("Customer Name")
-            addr = st.text_input("Full Address")
-            mail = st.text_input("Email")
-            service_day = st.selectbox("Service Day", ["Monday","Tuesday","Wednesday","Thursday","Friday"])
-            submitted = st.form_submit_button("Save to Database")
+    # -------------------------
+    # ADMIN TAB - Manage Clients
+    # -------------------------
+    if st.session_state["user_role"] == "admin":
+        with tab2:
+            st.subheader("Manage Clients / Add New Admins & Techs")
+            all_customers = load_customers()
+            
+            for cust in all_customers:
+                with st.expander(cust["name"]):
+                    is_active = st.checkbox("Active", value=cust["active"], key=f"active_{cust['id']}")
+                    if is_active != cust["active"]:
+                        conn = sqlite3.connect("bayco.db")
+                        conn.execute("UPDATE customers SET active=? WHERE id=?", (1 if is_active else 0, cust["id"]))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"{cust['name']} status updated.")
 
-            if submitted:
-                if not name or not addr or not mail:
-                    st.error("All fields are required.")
-                else:
+            st.markdown("---")
+            st.markdown("### Add New Client")
+            with st.form("add_client", clear_on_submit=True):
+                name = st.text_input("Customer Name")
+                addr = st.text_input("Full Address")
+                mail = st.text_input("Email")
+                service_day = st.selectbox("Service Day", ["Monday","Tuesday","Wednesday","Thursday","Friday"])
+                submitted = st.form_submit_button("Save to Database")
+                if submitted:
                     from geopy.geocoders import Nominatim
                     geolocator = Nominatim(user_agent="bayco_pools_app", timeout=10)
                     loc = geolocator.geocode(addr)
@@ -172,52 +224,15 @@ if user_role == "admin":
                         conn.commit()
                         conn.close()
                         st.success(f"Added {name}!")
-                    else:
-                        st.error("Address not found.")
 
-# -------------------------
-# TODAY'S ROUTE / TECHS
-# -------------------------
-with tab1:
-    st.subheader(f"🧹 Route for {TODAY}")
-    all_customers = load_customers()
-    route_customers = [c for c in all_customers if c["service_day"] == TODAY and c["active"]]
-
-    if not route_customers:
-        st.info("No customers scheduled for today!")
-    else:
-        # Sort by distance from office
-        for c in route_customers:
-            c["dist"] = geodesic(OFFICE_LOCATION, c["coords"]).miles
-        route = sorted(route_customers, key=lambda x: x["dist"], reverse=True)
-
-        ors_client = openrouteservice.Client(key=ORS_API_KEY)
-
-        for i, cust in enumerate(route):
-            with st.expander(f"📍 {cust['name']} ({round(cust['dist'],1)} mi)"):
-                st.write(f"**Address:** {cust['address']}")
-                notes = st.text_area("Notes", key=f"notes_{i}")
-                photo = st.file_uploader("Upload Pool Photo", type=["jpg","png"], key=f"img_{i}")
-
-                if st.button("Start Cleaning", key=f"start_{i}"):
-                    conn = sqlite3.connect("bayco.db")
-                    conn.execute("UPDATE customers SET cleaning_started=1 WHERE id=?", (cust["id"],))
-                    conn.commit()
-                    conn.close()
-                    st.success(f"Started cleaning {cust['name']}!")
-
-                # Directions via ORS
-                coords = [OFFICE_LOCATION, cust["coords"]]
-                try:
-                    routes = ors_client.directions(coords)
-                    steps = routes['routes'][0]['segments'][0]['steps']
-                    st.markdown("**Directions:**")
-                    for step in steps:
-                        st.write(f"{step['instruction']} ({step['distance']:.0f} m)")
-                except Exception as e:
-                    st.error(f"Directions unavailable: {e}")
-
-                if st.button("Finish & Email", key=f"finish_{i}"):
-                    if send_report(cust["email"], cust["name"], notes, photo):
-                        st.success(f"Sent to {cust['name']}!")
-
+            st.markdown("---")
+            st.markdown("### Add Admin / Tech")
+            with st.form("add_user"):
+                new_user = st.text_input("Username")
+                new_pass = st.text_input("Password", type="password")
+                role = st.selectbox("Role", ["admin","tech"])
+                submitted_user = st.form_submit_button("Add User")
+                if submitted_user:
+                    secrets_dict = st.secrets.get(f"{role}s", {})
+                    secrets_dict[new_user] = new_pass
+                    st.success(f"{role.title()} '{new_user}' added! (Remember to update Streamlit secrets)")

@@ -19,7 +19,7 @@ OFFICE_LOCATION = tuple(map(float, st.secrets.get("OFFICE_LOCATION", "30.2127,-8
 SMTP_SERVER = "mail.spacemail.com"
 SMTP_PORT = 465
 
-ORS_API_KEY = st.secrets.get("ORS_API_KEY", "")  # Put your OpenRouteService API key in secrets.toml
+ORS_API_KEY = st.secrets.get("ORS_API_KEY", "")  
 
 # -------------------------
 # DATABASE FUNCTIONS

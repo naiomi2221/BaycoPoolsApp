@@ -47,12 +47,36 @@ def init_db():
 
 
 def load_customers():
-    conn = sqlite3.connect('bayco.db')
+    conn = sqlite3.connect("bayco.db")
     c = conn.cursor()
-    c.execute("SELECT * FROM customers")
+
+    c.execute("""
+        SELECT
+            id,
+            name,
+            address,
+            email,
+            lat,
+            lon,
+            COALESCE(service_day, '') as service_day
+        FROM customers
+    """)
+
     rows = c.fetchall()
     conn.close()
-    return [{"id": r[0], "name": r[1], "address": r[2], "email": r[3], "coords": (r[4], r[5]), "service_day": r[6]} for r in rows]
+
+    return [
+        {
+            "id": r[0],
+            "name": r[1],
+            "address": r[2],
+            "email": r[3],
+            "coords": (r[4], r[5]),
+            "service_day": r[6]
+        }
+        for r in rows
+    ]
+
 
 
 init_db()

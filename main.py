@@ -1,0 +1,143 @@
+import sqlite3
+import smtplib
+from geopy.geocoders import Nominatim
+from email.message import EmailMessage
+from geopy.distance import geodesic
+import streamlit as st
+
+
+geolocator = Nominatim(
+    user_agent="bayco_pools_app",
+    timeout=10
+)
+ST_EMAIL = st.secrets["EMAIL_USER"]
+ST_PASS = st.secrets["EMAIL_PASS"]
+
+off_str = st.secrets.get("OFFICE_LOCATION", "30.2127,-85.8350")
+OFFICE_LOCATION = tuple(map(float, off_str.split(",")))
+
+SMTP_SERVER = "mail.spacemail.com"
+SMTP_PORT = 465
+# 2. DATABASE HELPERS
+def init_db():
+    conn = sqlite3.connect('bayco.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS customers
+                 (
+                     id
+                     INTEGER
+                     PRIMARY
+                     KEY
+                     AUTOINCREMENT,
+                     name
+                     TEXT,
+                     address
+                     TEXT,
+                     email
+                     TEXT,
+                     lat
+                     REAL,
+                     lon
+                     REAL
+                 )''')
+    conn.commit()
+    conn.close()
+
+
+def load_customers():
+    conn = sqlite3.connect('bayco.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM customers")
+    rows = c.fetchall()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "address": r[2], "email": r[3], "coords": (r[4], r[5])} for r in rows]
+
+
+init_db()
+
+def send_report(to_email, name, notes, photo_file):
+    msg = EmailMessage()
+    msg["Subject"] = f"Bayco Pools Service Report: {name}"
+    msg["From"] = ST_EMAIL
+    msg["To"] = to_email
+    msg.set_content(
+        f"Hi {name},\n\nYour pool service is complete!\n\nNotes:\n{notes}\n\nHave a great day!"
+    )
+
+    if photo_file and photo_file.type:
+        file_data = photo_file.read()
+        photo_file.seek(0)
+        maintype, subtype = photo_file.type.split("/")
+        msg.add_attachment(
+            file_data,
+            maintype=maintype,
+            subtype=subtype,
+            filename=photo_file.name
+        )
+
+    try:
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=20) as server:
+            server.login(ST_EMAIL, ST_PASS)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Email failed: {e}")
+        return False
+
+
+    # 2. Handle the photo attachment
+
+# 4. APP INTERFACE
+st.set_page_config(page_title="Bayco Pools Pro", page_icon="🌊")
+st.title("🌊 Bayco Pools Manager")
+
+tab1, tab2 = st.tabs(["Today's Route", "Manage Clients"])
+
+with tab2:
+    st.subheader("Add New Client")
+    with st.form("add_client", clear_on_submit=True):
+        name = st.text_input("Customer Name")
+        addr = st.text_input("Full Address")
+        mail = st.text_input("Email")
+
+        submitted = st.form_submit_button("Save to Database")
+
+        if submitted:
+            if not name or not addr or not mail:
+                st.error("All fields are required.")
+            else:
+                loc = geolocator.geocode(addr)
+                if loc:
+                    conn = sqlite3.connect('bayco.db')
+                    conn.execute(
+                        "INSERT INTO customers (name, address, email, lat, lon) VALUES (?,?,?,?,?)",
+                        (name, addr, mail, loc.latitude, loc.longitude)
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.success(f"Added {name}!")
+                    st.rerun()
+                else:
+                    st.error("Address not found.")
+
+with tab1:
+    customers = load_customers()
+    if not customers:
+        st.info("Add customers in the Manage Clients tab to begin.")
+    else:
+        for c in customers:
+            c['dist'] = geodesic(OFFICE_LOCATION, c['coords']).miles
+
+        # Sort by distance (furthest first for routing)
+        route = sorted(customers, key=lambda x: x['dist'], reverse=True)
+
+        for i, cust in enumerate(route):
+            with st.expander(f"📍 {cust['name']} ({round(cust['dist'], 1)} mi)"):
+                st.write(f"**Address:** {cust['address']}")
+                st.write(f"**Email:** {cust['email']}")
+                notes = st.text_area("Notes", key=f"notes_{i}")
+                photo = st.file_uploader("Upload Pool Photo", type=['jpg', 'png'], key=f"img_{i}")
+
+                if st.button("Finish & Email", key=f"btn_{i}"):
+                    if send_report(cust['email'], cust['name'], notes, photo):
+                        st.success(f"Sent to {cust['name']}!")

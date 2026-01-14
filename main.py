@@ -128,9 +128,9 @@ def show_login():
         """
         <style>
         .login-container {
-            background: rgba(0,0,0,0.5) url('https://i.ibb.co/9vZ3xVJ/island-oasis.jpg');
+            background: rgba(0,0,0,0.5) url('https://www.vecteezy.com/free-photos/infinity-pool');
             background-size: cover;
-            background-position: center;
+            background-position: fill;
             padding: 4rem;
             border-radius: 1rem;
             color: white;

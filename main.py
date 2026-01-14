@@ -127,10 +127,13 @@ def show_login():
 
     if login_button:
         if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-            st.session_state["logged_in"] = True
-            st.session_state["username"] = username
-            st.session_state["user_role"] = "admin"
-            st.experimental_rerun()
+            st.session_state.update({
+            "logged_in": True,
+            "username": username,
+            "user_role": users[username]["role"]
+            })
+            st.stop()  # Stop this run; next run will show the logged-in view
+   
         else:
             # Check techs in Supabase
             response = supabase.table("techs").select("*").eq("username", username).execute()

@@ -163,3 +163,14 @@ else:
                     if st.button("Finish & Email", key=f"finish_{i}"):
                         if send_report(cust["email"], cust["name"], notes, photo):
                             st.success(f"Sent to {cust['name']}!")
+def load_users():
+    try:
+        response = supabase.table("users").select("*").execute()
+        if response.status_code != 200:
+            st.error(f"Failed to load users: {response.data}")
+            return {}
+        users = response.data
+        return {user["username"]: {"password": user["password"], "role": user["role"]} for user in users}
+    except Exception as e:
+        st.error(f"Error loading users: {e}")
+        return {}

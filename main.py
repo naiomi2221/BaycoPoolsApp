@@ -1,93 +1,29 @@
-import sqlite3
-import smtplib
-from email.message import EmailMessage
-from datetime import datetime
 import streamlit as st
+from datetime import datetime
 from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
-import openrouteservice
-from openrouteservice import convert
-import time
+from email.message import EmailMessage
+import smtplib
+from supabase import create_client, Client
 
 # -------------------------
-# CONFIG & CONSTANTS
+# CONFIG
 # -------------------------
 TODAY = datetime.now().strftime("%A")
 
-# Admin login
-ADMIN_USERNAME = "Naiomi"
-ADMIN_PASSWORD = "Haley!5301"
-
-# Supabase / other secrets would go here
-ST_EMAIL = st.secrets["EMAIL_USER"]
-ST_PASS = st.secrets["EMAIL_PASS"]
-OFFICE_LOCATION = tuple(map(float, st.secrets.get("OFFICE_LOCATION", "30.2127,-85.8350").split(",")))
+# Secrets from Streamlit Cloud
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 ORS_API_KEY = st.secrets.get("ORS_API_KEY", "")
+EMAIL_USER = st.secrets["EMAIL_USER"]
+EMAIL_PASS = st.secrets["EMAIL_PASS"]
+OFFICE_LOCATION = tuple(map(float, st.secrets.get("OFFICE_LOCATION", "30.2127,-85.8350").split(",")))
+
+# Supabase client
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 SMTP_SERVER = "mail.spacemail.com"
 SMTP_PORT = 465
-
-# -------------------------
-# SESSION STATE INIT (FIXED)
-# -------------------------
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-if "username" not in st.session_state:
-    st.session_state["username"] = ""
-if "user_role" not in st.session_state:
-    st.session_state["user_role"] = ""
-if "active_tab" not in st.session_state:
-    st.session_state["active_tab"] = "tab1"
-
-# -------------------------
-# DATABASE INIT
-# -------------------------
-def init_db():
-    conn = sqlite3.connect("bayco.db")
-    c = conn.cursor()
-    # Customers table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS customers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            address TEXT,
-            email TEXT,
-            lat REAL,
-            lon REAL,
-            service_day TEXT,
-            active INTEGER DEFAULT 1,
-            cleaning_started INTEGER DEFAULT 0
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-
-def load_customers():
-    conn = sqlite3.connect("bayco.db")
-    c = conn.cursor()
-    c.execute("""
-        SELECT id, name, address, email, lat, lon, COALESCE(service_day, ''), active, cleaning_started
-        FROM customers
-    """)
-    rows = c.fetchall()
-    conn.close()
-    return [
-        {
-            "id": r[0],
-            "name": r[1],
-            "address": r[2],
-            "email": r[3],
-            "coords": (r[4], r[5]),
-            "service_day": r[6],
-            "active": bool(r[7]),
-            "cleaning_started": bool(r[8])
-        }
-        for r in rows
-    ]
-
-
-init_db()
 
 # -------------------------
 # EMAIL FUNCTION
@@ -95,7 +31,7 @@ init_db()
 def send_report(to_email, name, notes, photo_file):
     msg = EmailMessage()
     msg["Subject"] = f"Bayco Pools Service Report: {name}"
-    msg["From"] = ST_EMAIL
+    msg["From"] = EMAIL_USER
     msg["To"] = to_email
     msg.set_content(f"Hi {name},\n\nYour pool service is complete!\n\nNotes:\n{notes}\n\nHave a great day!")
 
@@ -107,7 +43,7 @@ def send_report(to_email, name, notes, photo_file):
 
     try:
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=20) as server:
-            server.login(ST_EMAIL, ST_PASS)
+            server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
         return True
     except Exception as e:
@@ -115,19 +51,38 @@ def send_report(to_email, name, notes, photo_file):
         return False
 
 # -------------------------
-# LOGIN SCREEN OVERLAY (FIXED)
+# LOAD CUSTOMERS
 # -------------------------
+def load_customers():
+    response = supabase.table("customers").select("*").execute()
+    if response.error:
+        st.error(f"Error loading customers: {response.error}")
+        return []
+    return [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "address": r["address"],
+            "email": r["email"],
+            "coords": (r["lat"], r["lon"]),
+            "service_day": r["service_day"],
+            "active": r["active"],
+            "cleaning_started": r["cleaning_started"]
+        }
+        for r in response.data
+    ]
+
 # -------------------------
-# LOGIN SCREEN OVERLAY
+# LOGIN
 # -------------------------
 def show_login():
-    # CSS for semi-transparent PNG background
     st.markdown(
         """
         <style>
         .login-container {
-            background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), 
-                        url('baycopoolbackground.png');
+            background:
+            linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)),
+            url("baycopoolbackground.png");
             background-size: cover;
             background-position: center;
             padding: 4rem;
@@ -141,23 +96,11 @@ def show_login():
         }
         .login-container input, .login-container button {
             margin-bottom: 1rem;
-            width: 100%;
-            padding: 0.5rem;
-            border-radius: 0.3rem;
-            border: none;
-        }
-        .login-container button {
-            background-color: #1E90FF;
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
         }
         </style>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
-
-    # Wrap in a div
     st.markdown('<div class="login-container">', unsafe_allow_html=True)
 
     st.subheader("🌴 Bayco Pools Login")
@@ -166,50 +109,57 @@ def show_login():
     login_button = st.button("Login")
 
     if login_button:
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-            # Set session state
+        # Authenticate against Supabase "users" table
+        response = supabase.table("users").select("*").eq("username", username).execute()
+        if response.data and response.data[0]["password"] == password:
             st.session_state["logged_in"] = True
-            st.session_state["username"] = ADMIN_USERNAME
-            st.session_state["user_role"] = "admin"
-            # Set a flag to safely rerun
-            st.session_state["rerun_flag"] = True
+            st.session_state["username"] = username
+            st.session_state["user_role"] = response.data[0]["role"]
+            st.session_state["active_tab"] = "route"  # ✅ Directly jump to route page
         else:
             st.error("Invalid credentials")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-
-# -------------------------
-# MAIN APP LOGIN CHECK
-# -------------------------
-if not st.session_state.get("logged_in", False):
-    show_login()
-    # Safely rerun after login function exits
-    if st.session_state.get("rerun_flag", False):
-        st.session_state["rerun_flag"] = False
-        st.experimental_rerun()
-    st.stop()
-
-
 # -------------------------
 # STREAMLIT APP
 # -------------------------
 st.set_page_config(page_title="Bayco Pools", page_icon="assets/favicon.png")
-st.title("🌊 Bayco Pools Manager")
 
-# -------------------------
-# SHOW LOGIN IF NOT LOGGED IN
-# -------------------------
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+if "active_tab" not in st.session_state:
+    st.session_state["active_tab"] = "route"
+
+# Show login if not logged in
 if not st.session_state["logged_in"]:
     show_login()
-    st.stop()  # Stop app until login successful
+else:
+    st.sidebar.subheader(f"Logged in as {st.session_state['username']} ({st.session_state['user_role']})")
 
-# -------------------------
-# SIDEBAR USER INFO
-# -------------------------
-st.sidebar.subheader(f"Logged in as {st.session_state['username']} ({st.session_state['user_role']})")
+    # Tabs or sections
+    active_tab = st.session_state["active_tab"]
 
-# -------------------------
-# YOUR APP LOGIC CONTINUES HERE
-# (Tabs, customer management, emailing, ORS, etc.)
-# -------------------------
+    if active_tab == "route":
+        st.subheader(f"🧹 Route for {TODAY}")
+        all_customers = load_customers()
+        route_customers = [c for c in all_customers if c["service_day"] == TODAY and c["active"]]
+
+        if not route_customers:
+            st.info(f"No customers scheduled for {TODAY}.")
+        else:
+            for c in route_customers:
+                c["dist"] = geodesic(OFFICE_LOCATION, c["coords"]).miles
+
+            route_customers = sorted(route_customers, key=lambda x: x["dist"], reverse=True)
+
+            for i, cust in enumerate(route_customers):
+                with st.expander(f"📍 {cust['name']} ({round(cust['dist'],1)} mi)"):
+                    st.write(f"**Address:** {cust['address']}")
+                    st.write(f"**Email:** {cust['email']}")
+                    notes = st.text_area("Notes", key=f"notes_{i}")
+                    photo = st.file_uploader("Upload Pool Photo", type=["jpg","png"], key=f"img_{i}")
+
+                    if st.button("Finish & Email", key=f"finish_{i}"):
+                        if send_report(cust["email"], cust["name"], notes, photo):
+                            st.success(f"Sent to {cust['name']}!")

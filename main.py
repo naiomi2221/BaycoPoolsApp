@@ -117,17 +117,19 @@ def send_report(to_email, name, notes, photo_file):
 # -------------------------
 # LOGIN SCREEN OVERLAY (FIXED)
 # -------------------------
+# -------------------------
+# LOGIN SCREEN OVERLAY
+# -------------------------
 def show_login():
+    # CSS for semi-transparent PNG background
     st.markdown(
         """
         <style>
         .login-container {
-            background:
-            linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)),
-            url("baycopoolbackground.png");
+            background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), 
+                        url('baycopoolbackground.png');
             background-size: cover;
             background-position: center;
-
             padding: 4rem;
             border-radius: 1rem;
             color: white;
@@ -139,10 +141,23 @@ def show_login():
         }
         .login-container input, .login-container button {
             margin-bottom: 1rem;
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 0.3rem;
+            border: none;
+        }
+        .login-container button {
+            background-color: #1E90FF;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
         }
         </style>
-        """, unsafe_allow_html=True
+        """,
+        unsafe_allow_html=True,
     )
+
+    # Wrap in a div
     st.markdown('<div class="login-container">', unsafe_allow_html=True)
 
     st.subheader("🌴 Bayco Pools Login")
@@ -152,14 +167,29 @@ def show_login():
 
     if login_button:
         if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            # Set session state
             st.session_state["logged_in"] = True
-            st.session_state["username"] = username
+            st.session_state["username"] = ADMIN_USERNAME
             st.session_state["user_role"] = "admin"
-            st.experimental_rerun()  # ✅ called alone
+            # Set a flag to safely rerun
+            st.session_state["rerun_flag"] = True
         else:
             st.error("Invalid credentials")
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+# -------------------------
+# MAIN APP LOGIN CHECK
+# -------------------------
+if not st.session_state.get("logged_in", False):
+    show_login()
+    # Safely rerun after login function exits
+    if st.session_state.get("rerun_flag", False):
+        st.session_state["rerun_flag"] = False
+        st.experimental_rerun()
+    st.stop()
+
 
 # -------------------------
 # STREAMLIT APP

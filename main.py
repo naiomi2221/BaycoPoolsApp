@@ -93,11 +93,13 @@ def show_login():
             st.session_state["logged_in"] = True
             st.session_state["username"] = username
             st.session_state["user_role"] = "admin"
+            # ✅ Rerun the app properly
             st.experimental_rerun()
         else:
             st.error("Invalid credentials")
 
     st.markdown('</div>', unsafe_allow_html=True)
+
 
 # -------------------------
 # LOAD CUSTOMERS FROM SUPABASE

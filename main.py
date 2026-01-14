@@ -1,29 +1,26 @@
 import streamlit as st
 from datetime import datetime
-from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
-from email.message import EmailMessage
+from geopy.distance import geodesic
 import smtplib
-from supabase import create_client, Client
+from email.message import EmailMessage
+from supabase import create_client
 
 # -------------------------
-# CONFIG
+# CONFIG & CONSTANTS
 # -------------------------
-TODAY = datetime.now().strftime("%A")
-
-# Secrets from Streamlit Cloud
+ST_EMAIL = st.secrets["EMAIL_USER"]
+ST_PASS = st.secrets["EMAIL_PASS"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-ORS_API_KEY = st.secrets.get("ORS_API_KEY", "")
-EMAIL_USER = st.secrets["EMAIL_USER"]
-EMAIL_PASS = st.secrets["EMAIL_PASS"]
 OFFICE_LOCATION = tuple(map(float, st.secrets.get("OFFICE_LOCATION", "30.2127,-85.8350").split(",")))
 
-# Supabase client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 SMTP_SERVER = "mail.spacemail.com"
 SMTP_PORT = 465
+
+TODAY = datetime.now().strftime("%A")
 
 # -------------------------
 # EMAIL FUNCTION
@@ -31,7 +28,7 @@ SMTP_PORT = 465
 def send_report(to_email, name, notes, photo_file):
     msg = EmailMessage()
     msg["Subject"] = f"Bayco Pools Service Report: {name}"
-    msg["From"] = EMAIL_USER
+    msg["From"] = ST_EMAIL
     msg["To"] = to_email
     msg.set_content(f"Hi {name},\n\nYour pool service is complete!\n\nNotes:\n{notes}\n\nHave a great day!")
 
@@ -43,7 +40,7 @@ def send_report(to_email, name, notes, photo_file):
 
     try:
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=20) as server:
-            server.login(EMAIL_USER, EMAIL_PASS)
+            server.login(ST_EMAIL, ST_PASS)
             server.send_message(msg)
         return True
     except Exception as e:
@@ -51,41 +48,7 @@ def send_report(to_email, name, notes, photo_file):
         return False
 
 # -------------------------
-# LOAD CUSTOMERS
-# -------------------------
-def load_customers():
-    try:
-        response = supabase.table("customers").select("*").execute()
-        # Check if response has error attribute and if it's truthy
-        if hasattr(response, "error") and response.error:
-            st.error(f"Failed to load customers: {response.error.message}")
-            return []
-        # Or check HTTP status code if available
-        if hasattr(response, "status_code") and response.status_code != 200:
-            st.error(f"Failed to load customers: status {response.status_code}")
-            return []
-        # Otherwise get data
-        customers = response.data
-        return [
-            {
-                "id": c["id"],
-                "name": c["name"],
-                "address": c["address"],
-                "email": c["email"],
-                "coords": (c.get("lat"), c.get("lon")),
-                "service_day": c.get("service_day", ""),
-                "active": c.get("active", False),
-                "cleaning_started": c.get("cleaning_started", False),
-            }
-            for c in customers
-        ]
-    except Exception as e:
-        st.error(f"Error loading customers: {e}")
-        return []
-
-
-# -------------------------
-# LOGIN
+# LOGIN SCREEN
 # -------------------------
 def show_login():
     st.markdown(
@@ -110,79 +73,144 @@ def show_login():
             margin-bottom: 1rem;
         }
         </style>
-        """,
-        unsafe_allow_html=True
+        """, unsafe_allow_html=True
     )
     st.markdown('<div class="login-container">', unsafe_allow_html=True)
-
     st.subheader("🌴 Bayco Pools Login")
+
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     login_button = st.button("Login")
 
     if login_button:
-        # Authenticate against Supabase "users" table
-        response = supabase.table("users").select("*").eq("username", username).execute()
-        if response.data and response.data[0]["password"] == password:
-            st.session_state["logged_in"] = True
-            st.session_state["username"] = username
-            st.session_state["user_role"] = response.data[0]["role"]
-            st.session_state["active_tab"] = "route"  # ✅ Directly jump to route page
-        else:
-            st.error("Invalid credentials")
+        try:
+            # Check credentials in Supabase 'users' table
+            response = supabase.table("users").select("*").eq("username", username).execute()
+            if response.data and response.data[0]["password"] == password:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.session_state["user_role"] = response.data[0]["role"]
+                st.success(f"Logged in as {username}")
+            else:
+                st.error("Invalid credentials")
+        except Exception as e:
+            st.error(f"Login error: {e}")
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+# -------------------------
+# CUSTOMER MANAGEMENT
+# -------------------------
+def load_customers():
+    try:
+        response = supabase.table("customers").select("*").execute()
+        if hasattr(response, "error") and response.error:
+            st.error(f"Error loading customers: {response.error.message}")
+            return []
+        if response.status_code != 200:
+            st.error(f"Error loading customers: Status {response.status_code}")
+            return []
+        return response.data
+    except Exception as e:
+        st.error(f"Failed to load customers: {e}")
+        return []
+
+def add_client_tab():
+    st.subheader("Add New Client")
+    with st.form("add_client_form"):
+        name = st.text_input("Customer Name")
+        address = st.text_input("Full Address")
+        email = st.text_input("Email")
+        service_day = st.selectbox("Service Day", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+        submitted = st.form_submit_button("Save to Database")
+
+        if submitted:
+            if not name or not address or not email:
+                st.error("All fields are required.")
+                return
+
+            geolocator = Nominatim(user_agent="bayco_pools_app", timeout=10)
+            location = geolocator.geocode(address)
+            if not location:
+                st.error("Address not found. Please enter a valid address.")
+                return
+
+            response = supabase.table("customers").insert({
+                "name": name,
+                "address": address,
+                "email": email,
+                "lat": location.latitude,
+                "lon": location.longitude,
+                "service_day": service_day,
+                "active": True,
+                "cleaning_started": False
+            }).execute()
+
+            if response.status_code in [200, 201]:
+                st.success(f"Added customer {name}!")
+            else:
+                st.error(f"Failed to add customer: {response.data}")
+
+# -------------------------
+# ROUTE TAB
+# -------------------------
+def todays_route_tab():
+    st.subheader(f"🧹 Route for {TODAY}")
+    all_customers = load_customers()
+    route_customers = [c for c in all_customers if c["service_day"] == TODAY and c.get("active")]
+
+    if not route_customers:
+        st.info(f"No customers scheduled for {TODAY}.")
+        return
+
+    # Compute distance from office
+    for c in route_customers:
+        c["dist"] = geodesic(OFFICE_LOCATION, (c["lat"], c["lon"])).miles
+
+    route_customers.sort(key=lambda x: x["dist"], reverse=True)
+
+    for cust in route_customers:
+        st.markdown(f"### 📍 {cust['name']} ({round(cust['dist'],1)} mi)")
+        st.write(f"**Address:** {cust['address']}")
+        st.write(f"**Email:** {cust['email']}")
+
+        notes = st.text_area("Notes", key=f"notes_{cust['id']}")
+        photo = st.file_uploader("Upload Pool Photo", type=["jpg","png"], key=f"img_{cust['id']}")
+
+        if st.button(f"Start Cleaning", key=f"start_{cust['id']}"):
+            supabase.table("customers").update({"cleaning_started": True}).eq("id", cust["id"]).execute()
+            st.success(f"Started cleaning {cust['name']}!")
+
+        # Directions button
+        if st.button(f"Show Directions to {cust['name']}", key=f"dir_{cust['id']}"):
+            office_str = f"{OFFICE_LOCATION[0]},{OFFICE_LOCATION[1]}"
+            dest_str = f"{cust['lat']},{cust['lon']}"
+            url = f"https://www.google.com/maps/dir/{office_str}/{dest_str}/"
+            st.markdown(f"[Open directions in Google Maps]({url})", unsafe_allow_html=True)
+
+        if st.button(f"Finish & Email", key=f"finish_{cust['id']}"):
+            if send_report(cust["email"], cust["name"], notes, photo):
+                st.success(f"Sent to {cust['name']}!")
 
 # -------------------------
 # STREAMLIT APP
 # -------------------------
 st.set_page_config(page_title="Bayco Pools", page_icon="assets/favicon.png")
+st.title("🌊 Bayco Pools Manager")
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
-if "active_tab" not in st.session_state:
-    st.session_state["active_tab"] = "route"
 
-# Show login if not logged in
 if not st.session_state["logged_in"]:
     show_login()
-else:
-    st.sidebar.subheader(f"Logged in as {st.session_state['username']} ({st.session_state['user_role']})")
+    st.stop()
 
-    # Tabs or sections
-    active_tab = st.session_state["active_tab"]
+st.sidebar.subheader(f"Logged in as {st.session_state['username']} ({st.session_state['user_role']})")
 
-    if active_tab == "route":
-        st.subheader(f"🧹 Route for {TODAY}")
-        all_customers = load_customers()
-        route_customers = [c for c in all_customers if c["service_day"] == TODAY and c["active"]]
+tab1, tab2 = st.tabs(["Today's Route", "Manage Clients"])
 
-        if not route_customers:
-            st.info(f"No customers scheduled for {TODAY}.")
-        else:
-            for c in route_customers:
-                c["dist"] = geodesic(OFFICE_LOCATION, c["coords"]).miles
+with tab1:
+    todays_route_tab()
 
-            route_customers = sorted(route_customers, key=lambda x: x["dist"], reverse=True)
-
-            for i, cust in enumerate(route_customers):
-                with st.expander(f"📍 {cust['name']} ({round(cust['dist'],1)} mi)"):
-                    st.write(f"**Address:** {cust['address']}")
-                    st.write(f"**Email:** {cust['email']}")
-                    notes = st.text_area("Notes", key=f"notes_{i}")
-                    photo = st.file_uploader("Upload Pool Photo", type=["jpg","png"], key=f"img_{i}")
-
-                    if st.button("Finish & Email", key=f"finish_{i}"):
-                        if send_report(cust["email"], cust["name"], notes, photo):
-                            st.success(f"Sent to {cust['name']}!")
-def load_users():
-    try:
-        response = supabase.table("users").select("*").execute()
-        if response.status_code != 200:
-            st.error(f"Failed to load users: {response.data}")
-            return {}
-        users = response.data
-        return {user["username"]: {"password": user["password"], "role": user["role"]} for user in users}
-    except Exception as e:
-        st.error(f"Error loading users: {e}")
-        return {}
+with tab2:
+    add_client_tab()

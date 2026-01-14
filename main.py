@@ -54,23 +54,35 @@ def send_report(to_email, name, notes, photo_file):
 # LOAD CUSTOMERS
 # -------------------------
 def load_customers():
-    response = supabase.table("customers").select("*").execute()
-    if response.error:
-        st.error(f"Error loading customers: {response.error}")
+    try:
+        response = supabase.table("customers").select("*").execute()
+        # Check if response has error attribute and if it's truthy
+        if hasattr(response, "error") and response.error:
+            st.error(f"Failed to load customers: {response.error.message}")
+            return []
+        # Or check HTTP status code if available
+        if hasattr(response, "status_code") and response.status_code != 200:
+            st.error(f"Failed to load customers: status {response.status_code}")
+            return []
+        # Otherwise get data
+        customers = response.data
+        return [
+            {
+                "id": c["id"],
+                "name": c["name"],
+                "address": c["address"],
+                "email": c["email"],
+                "coords": (c.get("lat"), c.get("lon")),
+                "service_day": c.get("service_day", ""),
+                "active": c.get("active", False),
+                "cleaning_started": c.get("cleaning_started", False),
+            }
+            for c in customers
+        ]
+    except Exception as e:
+        st.error(f"Error loading customers: {e}")
         return []
-    return [
-        {
-            "id": r["id"],
-            "name": r["name"],
-            "address": r["address"],
-            "email": r["email"],
-            "coords": (r["lat"], r["lon"]),
-            "service_day": r["service_day"],
-            "active": r["active"],
-            "cleaning_started": r["cleaning_started"]
-        }
-        for r in response.data
-    ]
+
 
 # -------------------------
 # LOGIN

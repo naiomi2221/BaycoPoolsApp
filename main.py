@@ -104,9 +104,6 @@ def show_login():
 def load_customers():
     try:
         response = supabase.table("customers").select("*").execute()
-        if hasattr(response, "error") and response.error:
-            st.error(f"Error loading customers: {response.error.message}")
-            return []
         if response.status_code != 200:
             st.error(f"Error loading customers: Status {response.status_code}")
             return []
@@ -157,7 +154,12 @@ def add_client_tab():
 def todays_route_tab():
     st.subheader(f"🧹 Route for {TODAY}")
     all_customers = load_customers()
-    route_customers = [c for c in all_customers if c["service_day"] == TODAY and c.get("active")]
+
+    # Filter only active customers scheduled for today
+    route_customers = [
+        c for c in all_customers
+        if c.get("service_day") == TODAY and c.get("active") is True
+    ]
 
     if not route_customers:
         st.info(f"No customers scheduled for {TODAY}.")
@@ -182,11 +184,10 @@ def todays_route_tab():
             st.success(f"Started cleaning {cust['name']}!")
 
         # Directions button
-        if st.button(f"Show Directions to {cust['name']}", key=f"dir_{cust['id']}"):
-            office_str = f"{OFFICE_LOCATION[0]},{OFFICE_LOCATION[1]}"
-            dest_str = f"{cust['lat']},{cust['lon']}"
-            url = f"https://www.google.com/maps/dir/{office_str}/{dest_str}/"
-            st.markdown(f"[Open directions in Google Maps]({url})", unsafe_allow_html=True)
+        office_str = f"{OFFICE_LOCATION[0]},{OFFICE_LOCATION[1]}"
+        dest_str = f"{cust['lat']},{cust['lon']}"
+        maps_url = f"https://www.google.com/maps/dir/{office_str}/{dest_str}/"
+        st.markdown(f"[🗺️ Open directions in Google Maps]({maps_url})", unsafe_allow_html=True)
 
         if st.button(f"Finish & Email", key=f"finish_{cust['id']}"):
             if send_report(cust["email"], cust["name"], notes, photo):

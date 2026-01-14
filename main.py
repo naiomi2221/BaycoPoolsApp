@@ -128,9 +128,12 @@ def show_login():
         """
         <style>
         .login-container {
-            background: rgba(0,0,0,0.5) url('https://www.vecteezy.com/free-photos/infinity-pool');
+            background:
+            linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)),
+            url("baycopoolbackground.png");
             background-size: cover;
-            background-position: fill;
+            background-position: center;
+
             padding: 4rem;
             border-radius: 1rem;
             color: white;

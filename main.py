@@ -35,28 +35,37 @@ body {
 # -------------------------
 # LOGIN
 # -------------------------
+# -------------------------
+# LOGIN
+# -------------------------
 def show_login():
     st.markdown('<div style="max-width:400px;margin:5vh auto;padding:2rem;background:rgba(0,0,0,0.5);border-radius:10px;">', unsafe_allow_html=True)
     st.subheader("🌴 Bayco Pools Login")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     login_button = st.button("Login")
+
     if login_button:
+        # Check against your secrets
         if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-            st.session_state["logged_in"] = True
-            st.session_state["username"] = username
-            st.session_state["user_role"] = "admin"
-            st.experimental_rerun()
+            try:
+                # --- THIS IS THE KEY STEP ---
+                # This authenticates the 'supabase' client globally for the rest of the script
+                supabase.auth.sign_in_with_password({
+                    "email": EMAIL_USER, 
+                    "password": EMAIL_PASS
+                })
+                
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.session_state["user_role"] = "admin"
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Supabase Auth Error: {e}")
         else:
             st.error("Invalid credentials")
     st.markdown('</div>', unsafe_allow_html=True)
-
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-
-if not st.session_state["logged_in"]:
-    show_login()
-    st.stop()
 
 # -------------------------
 # HELPER FUNCTIONS

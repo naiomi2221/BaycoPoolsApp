@@ -15,7 +15,8 @@ OFFICE_LOCATION = tuple(map(float, st.secrets.get("OFFICE_LOCATION", "30.2127,-8
 
 ADMIN_USERNAME = st.secrets["ADMIN_USERNAME"]
 ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
-
+EMAIL_USER = st.secrets["EMAIL_USER"]
+EMAIL_PASS = st.secrets["EMAIL_PASS"]
 ORS_API_KEY = st.secrets.get("ORS_API_KEY", "")  # optional for directions API
 
 # -------------------------
@@ -46,11 +47,9 @@ def show_login():
     login_button = st.button("Login")
 
     if login_button:
-        # Check against your secrets
+        
         if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
             try:
-                # --- THIS IS THE KEY STEP ---
-                # This authenticates the 'supabase' client globally for the rest of the script
                 supabase.auth.sign_in_with_password({
                     "email": EMAIL_USER, 
                     "password": EMAIL_PASS
@@ -66,7 +65,12 @@ def show_login():
         else:
             st.error("Invalid credentials")
     st.markdown('</div>', unsafe_allow_html=True)
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
 
+if not st.session_state["logged_in"]:
+    show_login()
+    st.stop()
 # -------------------------
 # HELPER FUNCTIONS
 # -------------------------
@@ -120,7 +124,7 @@ st.sidebar.subheader(f"Logged in as {st.session_state['username']} ({st.session_
 # -------------------------
 # TABS
 # -------------------------
-tab_route, tab_add = st.tabs(["Today's Route", "Add Customer"])
+tab_route, tab_add, tab_invoice = st.tabs(["Today's Route", "Add Customer", "Invoicing"])
 
 # -------------------------
 # ADD CUSTOMER TAB
@@ -163,3 +167,57 @@ with tab_route:
                 st.write(f"**Email:** {c['email']}")
                 if st.button("Open Map", key=f"map_{c['id']}"):
                     open_map(c["lat"], c["lon"])
+# -------------------------
+# INVOICING TAB
+# -------------------------
+with tab_invoice:
+    st.subheader("Create New Invoice")
+    
+    # Load customers for the dropdown
+    all_customers = load_customers()
+    if not all_customers:
+        st.warning("No customers found. Add a customer first.")
+    else:
+        # Create a dictionary to map Names to IDs
+        cust_options = {c['name']: c['id'] for c in all_customers}
+        
+        with st.form("new_invoice_form"):
+            selected_name = st.selectbox("Select Customer", options=list(cust_options.keys()))
+            bill_amount = st.number_input("Service Fee ($)", min_value=0.0, value=85.0, step=5.0)
+            create_btn = st.form_submit_button("Generate Invoice Record")
+            
+            if create_btn:
+                invoice_data = {
+                    "customer_id": cust_options[selected_name],
+                    "amount": bill_amount,
+                    "status": "Unpaid"
+                }
+                # Insert into your new invoices table
+                res = supabase.table("invoices").insert(invoice_data).execute()
+                st.success(f"Invoice created for {selected_name}!")
+
+    st.divider()
+    
+    # --- VIEW UNPAID INVOICES ---
+    st.subheader("Outstanding Payments")
+    # This query joins the invoices and customers table so we can see the name
+    try:
+        unpaid_res = supabase.table("invoices").select("*, customers(name)").eq("status", "Unpaid").execute()
+        unpaid_list = unpaid_res.data if unpaid_res.data else []
+        
+        if not unpaid_list:
+            st.info("All caught up! No unpaid invoices.")
+        else:
+            for inv in unpaid_list:
+                # Create a 3-column layout for a clean look
+                c1, c2, c3 = st.columns([2, 1, 1])
+                c1.write(f"**{inv['customers']['name']}**")
+                c2.write(f"${inv['amount']}")
+                
+                # Manual "Mark Paid" button (no fees!)
+                if c3.button("Confirm Paid", key=f"paid_{inv['id']}"):
+                    supabase.table("invoices").update({"status": "Paid"}).eq("id", inv['id']).execute()
+                    st.toast(f"Payment recorded for {inv['customers']['name']}!")
+                    st.rerun()
+    except Exception as e:
+        st.error(f"Error loading invoices: {e}")

@@ -210,7 +210,10 @@ with tab_route:
             with st.expander(f"{c['name']} ({round(distance_mi,1)} mi)"):
                 st.write(f"**Address:** {c['address']}")
                 st.write(f"**Email:** {c['email']}")
-                st.link_button("🌎 Open Map", f"https://www.google.com/maps/search/?api=1&query={c['lat']},{c['lon']}")
+                
+                google_nav_url = f"https://www.google.com/maps/dir/?api=1&destination={c['lat']},{c['lon']}&travelmode=driving"
+
+                st.link_button("🚀 Start Driving", google_nav_url)
 # -------------------------
 # INVOICING TAB
 # -------------------------

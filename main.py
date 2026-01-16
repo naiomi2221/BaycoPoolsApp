@@ -42,31 +42,28 @@ body {
 def show_login():
     st.markdown('<div style="max-width:400px;margin:5vh auto;padding:2rem;background:rgba(0,0,0,0.5);border-radius:10px;">', unsafe_allow_html=True)
     st.subheader("🌴 Bayco Pools Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    login_button = st.button("Login")
-
-    if login_button:
-        
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-            try:
-                supabase.auth.sign_in_with_password({
-                    "email": EMAIL_USER, 
-                    "password": EMAIL_PASS
-                })
-                
+    
+    user_input = st.text_input("Username")
+    pass_input = st.text_input("Password", type="password")
+    
+    if st.button("Login"):
+        try:
+            # This line looks in YOUR table (public.users) for a match
+            response = supabase.table("users").select("*").eq("username", user_input).eq("password", pass_input).execute()
+            
+            if response.data:
+                user_record = response.data[0]
                 st.session_state["logged_in"] = True
-                st.session_state["username"] = username
-                st.session_state["user_role"] = "admin"
+                st.session_state["username"] = user_record["username"]
+                # We save the ID (1) so we know who is doing the work later
+                st.session_state["user_id"] = user_record["id"] 
+                st.success(f"Welcome, {user_input}!")
                 st.rerun()
-                
-            except Exception as e:
-                st.error(f"Supabase Auth Error: {e}")
-        else:
-            st.error("Invalid credentials")
+            else:
+                st.error("Invalid Username or Password")
+        except Exception as e:
+            st.error(f"Login Error: {e}")
     st.markdown('</div>', unsafe_allow_html=True)
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
 
 if not st.session_state["logged_in"]:
     show_login()

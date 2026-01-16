@@ -32,7 +32,7 @@ if img_base64:
     """, unsafe_allow_html=True)
 else:
     st.warning(f"Background image not found at: {img_path}")
-)
+
 # -------------------------
 # CONFIG & SECRETS
 # -------------------------

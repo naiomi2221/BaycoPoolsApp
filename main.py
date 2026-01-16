@@ -210,8 +210,7 @@ with tab_route:
             with st.expander(f"{c['name']} ({round(distance_mi,1)} mi)"):
                 st.write(f"**Address:** {c['address']}")
                 st.write(f"**Email:** {c['email']}")
-                if st.button("Open Map", key=f"map_{c['id']}"):
-                    open_map(c["lat"], c["lon"])
+                st.link_button("🌎 Open Map", f"https://www.google.com/maps/search/?api=1&query={c['lat']},{c['lon']}")
 # -------------------------
 # INVOICING TAB
 # -------------------------

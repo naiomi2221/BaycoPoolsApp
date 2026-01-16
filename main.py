@@ -3,40 +3,35 @@ from supabase import create_client, Client
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 import webbrowser
+import streamlit as st
 import base64
 
+# 1. Define the function first
 def get_base64_of_bin_file(bin_file):
-    with open(bin_file, 'rb') as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
+    try:
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except FileNotFoundError:
+        return None  # Return None so the app doesn't crash if image is missing
 
-# Use the path to your image in the Codespace sidebar
-# If it's inside an 'assets' folder, use 'assets/baycopoolbackground.png'
-img_base64 = get_base64_of_bin_file('baycopoolbackground.png')
+# 2. Call the function with the exact path
+# Try adding 'assets/' if it's in a folder
+img_path = 'assets/baycopoolsbackground.png' 
+img_base64 = get_base64_of_bin_file(img_path)
 
-st.markdown(
-    f"""
-    <style>
-    [data-testid="stAppViewContainer"] {{
-        background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)),
-                    url("data:image/png;base64,{img_base64}");
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }}
-    
-    [data-testid="stHeader"] {{
-        background: rgba(0,0,0,0);
-    }}
-
-    /* Force all text elements to be white */
-    .stApp, p, h1, h2, h3, label, .stMarkdown {{
-        color: white !important;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
+# 3. Only run the CSS if the image was actually found
+if img_base64:
+    st.markdown(f"""
+        <style>
+        [data-testid="stAppViewContainer"] {{
+            background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)),
+                        url("data:image/png;base64,{img_base64}") center/cover no-repeat fixed;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
+else:
+    st.warning(f"Background image not found at: {img_path}")
 )
 # -------------------------
 # CONFIG & SECRETS

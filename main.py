@@ -50,17 +50,31 @@ def show_login():
     
     if st.button("Login"):
         try:
-            response = supabase.table("users").select("*").eq("username", user_input).eq("password", pass_input).execute()
+            # Step 1: Just get the user record by username
+            # We don't filter by password here to see if the user even exists
+            response = supabase.table("users").select("*").eq("username", user_input).execute()
             
-            if response.data:
+            # Step 2: Look at the results
+            if response.data and len(response.data) > 0:
                 user_record = response.data[0]
-                st.session_state["logged_in"] = True
-                st.session_state["username"] = user_record["username"]
-                st.session_state["user_id"] = user_record["id"] 
-                st.success(f"Welcome, {user_input}!")
-                st.rerun()
+                
+                # Step 3: Compare passwords inside Python (avoids DB glitches)
+                if str(user_record["password"]) == str(pass_input):
+                    st.session_state["logged_in"] = True
+                    st.session_state["username"] = user_record["username"]
+                    st.session_state["user_id"] = user_record["id"]
+                    # We give you a default role so the sidebar doesn't crash
+                    st.session_state["user_role"] = user_record.get("role", "admin")
+                    
+                    st.success("Login Successful!")
+                    st.rerun()
+                else:
+                    st.error("❌ Password match failed.")
+            else:
+                st.error(f"❌ Could not find user: {user_input}")
+                
         except Exception as e:
-            st.error(f"Login Error: {e}")
+            st.error(f"⚠️ Connection Error: {e}")
     st.markdown('</div>', unsafe_allow_html=True)
 
 if not st.session_state["logged_in"]:

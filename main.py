@@ -50,19 +50,15 @@ def show_login():
     
     if st.button("Login"):
         try:
-            # This line looks in YOUR table (public.users) for a match
             response = supabase.table("users").select("*").eq("username", user_input).eq("password", pass_input).execute()
             
             if response.data:
                 user_record = response.data[0]
                 st.session_state["logged_in"] = True
                 st.session_state["username"] = user_record["username"]
-                # We save the ID (1) so we know who is doing the work later
                 st.session_state["user_id"] = user_record["id"] 
                 st.success(f"Welcome, {user_input}!")
                 st.rerun()
-            else:
-                st.error("Invalid Username or Password")
         except Exception as e:
             st.error(f"Login Error: {e}")
     st.markdown('</div>', unsafe_allow_html=True)

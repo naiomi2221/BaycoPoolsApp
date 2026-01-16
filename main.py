@@ -10,7 +10,9 @@ import webbrowser
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
+# Initialize session state variables if they don't exist
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
 OFFICE_LOCATION = tuple(map(float, st.secrets.get("OFFICE_LOCATION", "30.2127,-85.8350").split(",")))
 
 ADMIN_USERNAME = st.secrets["ADMIN_USERNAME"]

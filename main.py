@@ -58,7 +58,7 @@ st.markdown("""
 <style>
 body {
     background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)),
-                url("baycopoolbackground.png") center/cover no-repeat;
+                url("baycopoolsbackground.png") center/cover no-repeat;
     color: white;
 }
 </style>

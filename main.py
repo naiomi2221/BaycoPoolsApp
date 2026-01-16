@@ -155,9 +155,11 @@ def add_customer(name, address, email, service_day):
         st.error(f"Supabase error: {e}")
         return False
 
-def open_map(lat, lon):
-    url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}"
-    webbrowser.open_new_tab(url)
+# The correct URL format is: https://www.google.com/maps?q=lat,lon
+
+def show_map_button(lat, lon):
+    google_maps_url = f"https://www.google.com/maps?q={lat},{lon}"
+    st.link_button("🌐 Open in Google Maps", google_maps_url)
 
 # -------------------------
 # SIDEBAR

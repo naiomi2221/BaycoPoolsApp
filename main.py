@@ -3,7 +3,41 @@ from supabase import create_client, Client
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 import webbrowser
+import base64
 
+def get_base64_of_bin_file(bin_file):
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+# Use the path to your image in the Codespace sidebar
+# If it's inside an 'assets' folder, use 'assets/baycopoolbackground.png'
+img_base64 = get_base64_of_bin_file('baycopoolbackground.png')
+
+st.markdown(
+    f"""
+    <style>
+    [data-testid="stAppViewContainer"] {{
+        background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)),
+                    url("data:image/png;base64,{img_base64}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
+    
+    [data-testid="stHeader"] {{
+        background: rgba(0,0,0,0);
+    }}
+
+    /* Force all text elements to be white */
+    .stApp, p, h1, h2, h3, label, .stMarkdown {{
+        color: white !important;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 # -------------------------
 # CONFIG & SECRETS
 # -------------------------
@@ -187,17 +221,15 @@ with tab_route:
 with tab_invoice:
     st.subheader("Create New Invoice")
     
-    # Load customers for the dropdown
     all_customers = load_customers()
     if not all_customers:
         st.warning("No customers found. Add a customer first.")
     else:
-        # Create a dictionary to map Names to IDs
         cust_options = {c['name']: c['id'] for c in all_customers}
         
         with st.form("new_invoice_form"):
             selected_name = st.selectbox("Select Customer", options=list(cust_options.keys()))
-            bill_amount = st.number_input("Service Fee ($)", min_value=0.0, value=85.0, step=5.0)
+            bill_amount = st.number_input("Service Fee ($)", min_value=0.0, value=185.0, step=5.0)
             create_btn = st.form_submit_button("Generate Invoice Record")
             
             if create_btn:

@@ -112,11 +112,16 @@ def add_customer(name, address, email, service_day):
     }
 
     try:
+        # We just execute the insert. If it fails, the 'except' block will catch it.
         response = supabase.table("customers").insert(customer_data).execute()
-        if response.status_code != 201 and response.data is None:
-            st.error(f"Failed to add customer: {response}")
+        
+        # If response.data has content, it worked!
+        if response.data:
+            return True
+        else:
+            st.error("Failed to add customer: No data returned.")
             return False
-        return True
+            
     except Exception as e:
         st.error(f"Supabase error: {e}")
         return False
